@@ -3,7 +3,7 @@
 __author__ = ""
 __copyright__ = ""
 __credits__ = [""]
-__license__ = "GPL"
+__license__ = "GPL3"
 __version__ = "0.0.1"
 __maintainer__ = ""
 __email__ = ""
@@ -76,7 +76,6 @@ def check_all(server_name, ef):
             ic(check)
             if check == "check_all":
                 ic("Skipping check_all")
-
             else:
                 ic(check)
                 match check:
@@ -434,6 +433,8 @@ def check_journalnodes(server_name, ef):
     print("-------------------------------------")
     print("JournalNode Information:->")
     print("-------------------------------------")
+    print("No Current Checks for JournalNodes")
+    print("-------------------------------------")
     return ef
 
 
@@ -462,7 +463,7 @@ def check_logs(server_name, node, ef):
             print("Number of Error Messages:", response['beans'][0]['LogError'])
             print("Number of Warn  Messages:", response['beans'][0]['LogWarn'])
             print("Number of Info  Messages:", response['beans'][0]['LogInfo'])
-            # print("Number of Debug Messages:", response['beans'][0]['LogDebug'])
+            #    print("Number of Debug Messages:", response['beans'][0]['LogDebug'])
             #    print("Number of Trace Messages:", response['beans'][0]['LogTrace'])
             #    print("Number of Total Messages:", response['beans'][0]['LogTotal'])
             print("-------------------------------------")
