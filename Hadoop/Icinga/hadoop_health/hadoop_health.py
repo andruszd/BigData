@@ -36,6 +36,7 @@ from datetime import datetime
 
 # Variables
 error_flag = 0
+
 # if you add a new check to the list below, you need to add it to the check_all function.
 checks = ["check_all", "check_status", "check_space", "check_blocks", "check_replication", "check_namenodes",
           "check_datanodes", "check_journalnodes", "check_logs"]
@@ -62,6 +63,26 @@ def calculate_percentage(num1, num2):
         return 0
 
 
+def check_boundaries(num1, num2, warn, crit, ef):
+    global error_flag
+
+    p_used = round(calculate_percentage(num1, num2), 2)
+    ic(p_used, warn, crit)
+    if p_used >= warn:
+        print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+        print("WARNING: CLuster Space is at: ", p_used, "% Used")
+        print("Clear some space soon! - I.E. Trash, Logs, etc.")
+        print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+        error_flag = 2
+    if p_used >= crit:
+        print("###########################################################")
+        print("CRITICAL: Cluster Space is at: ", p_used, "% Used")
+        print("Clear some space ASAP! or add more storage in the nodes.")
+        print("###########################################################")
+        error_flag = 1
+    return error_flag
+
+
 def check_all(server_name, ef):
     ic("check_all function on server:", server_name)
     # Check if server is up, if not exit with error(all I want is 200).
@@ -72,6 +93,7 @@ def check_all(server_name, ef):
     if response.status_code == requests.codes.ok:
         ic(server_name, "Server is up")
         ef: int = 0  # No error
+        ic("Error Flag:", ef)
         for check in checks:
             ic(check)
             if check == "check_all":
@@ -105,7 +127,8 @@ def check_all(server_name, ef):
         ic(server_name, "Server is down")
         response.raise_for_status()
         ef: int = 1  # Error
-    return ef
+        ic("Error Flag:", ef)
+        return ef
 
 
 def check_status(server_name, ef):
@@ -131,13 +154,9 @@ def check_status(server_name, ef):
     return ef
 
 
-def check_space(server_name, ef):
+def check_space(server_name, warning, critical, ef):
     global error_flag
     ic("check_space function on server:", server_name)
-    # Capacity variables are in GB size.
-    capacitytotal: int = 0
-    capacityused: int = 0
-    capacityremaining: int = 0
     url: str = f"http://{server_name}:9870/jmx?qry=Hadoop:service=NameNode,name=FSNamesystem"
     ic(url)
     response = requests.get(url, timeout=5, verify=False, allow_redirects=False)
@@ -145,11 +164,13 @@ def check_space(server_name, ef):
         ic(server_name, "Server is up")
         ef: int = 0  # No error
         error_flag = ef
+        ic("Error Flag:", error_flag)
     else:
         ic(server_name, "Server is down")
         response.raise_for_status()
         ef: int = 1
         error_flag = ef
+        ic("Error Flag:", error_flag)
         return error_flag  # Error
     ic(response)
     response = response.json()
@@ -157,6 +178,11 @@ def check_space(server_name, ef):
         calculate_percentage(response['beans'][0]['CapacityUsedGB'], response['beans'][0]['CapacityTotalGB']), 2)
     p_remaining = round(calculate_percentage(response['beans'][0]['CapacityRemainingGB'],
                                              response['beans'][0]['CapacityTotalGB']), 2)
+    check_boundaries(response['beans'][0]['CapacityUsedGB'], response['beans'][0]['CapacityTotalGB'],
+                     warning, critical, error_flag)
+    check_boundaries(response['beans'][0]['CapacityRemainingGB'],
+                     response['beans'][0]['CapacityTotalGB'], warning, critical, error_flag)
+    ic("Error Flag:", error_flag)
     ic("Capacity Total:", response['beans'][0]['CapacityTotalGB'], "GB")
     ic("Capacity Used:", response['beans'][0]['CapacityUsedGB'], "GB")
     ic("Capacity Remaining:", response['beans'][0]['CapacityRemainingGB'], "GB")
@@ -165,14 +191,14 @@ def check_space(server_name, ef):
     print("-------------------------------------")
     print("Capacity Total:", response['beans'][0]['CapacityTotalGB'], "GB")
     if response['beans'][0]['CapacityUsedGB'] > 0:
-        print("Capacity Used:", response['beans'][0]['CapacityUsedGB'], "GB" "or", p_used, "%")
+
+        print("Capacity Used:", response['beans'][0]['CapacityUsedGB'], "GB" "or", p_used, "% Used")
         print("-------------------------------------")
     else:
-        print("Capacity Used:", response['beans'][0]['CapacityUsed'], "Bytes", "or", p_used, "%")
-    print("Capacity Remaining:", response['beans'][0]['CapacityRemainingGB'], "GB", "or", p_remaining, "%")
+        print("Capacity Used:", response['beans'][0]['CapacityUsed'], "Bytes", "or", p_used, "% Used")
+    print("Capacity Remaining:", response['beans'][0]['CapacityRemainingGB'], "GB", "or", p_remaining, "% Remaining")
     print("-------------------------------------")
-    error_flag = ef
-    return ef
+    return error_flag
 
 
 def check_blocks(server_name, ef):
@@ -208,7 +234,7 @@ def check_blocks(server_name, ef):
     print("Missing Replicated Blocks:", response['beans'][0]['MissingReplicatedBlocks'])
     print("Missing ReplicationOne Blocks:", response['beans'][0]['MissingReplicationOneBlocks'])
     print("-------------------------------------")
-    return ef
+    return error_flag
 
 
 def check_replication(server_name, ef):
@@ -573,16 +599,32 @@ def main(warning=None, critical=None):
             ic.disable()
         ic("Starting Main")
         ic("Checking :", server, port, user, node, which_check, warning, critical)
-
+        # Check that warning is less than critical.
+        ic("Check that warning is less than critical.")
+        if warning >= critical:
+            ic("Warning must be less than Critical")
+            ic("warning:", warning, "critical:", critical)
+            ic("Setting warning to critical - 1")
+            warning = critical - 10
+            if warning <= 40:
+                ic("Warning must be 40 or greater")
+                ic("warning:", warning, "critical:", critical)
+                ic("Setting warning to 40")
+                warning = 40
+            ic("Warning:", warning, "Critical:", critical)
+            
         match node:
             case "an":
                 match which_check:
                     case "all":
                         check_all(server, error_flag)
+                        ic("All Error Flag:", error_flag)
                     case "status":
                         check_status(server, error_flag)
+                        ic("Status Error Flag:", error_flag)
                     case "logs":
                         check_logs(server, node, error_flag)
+                        ic("Error Flag:", error_flag)
                     # You should never get here.
                     case _:
                         ic("No Check Selected")
@@ -592,13 +634,17 @@ def main(warning=None, critical=None):
             case "nn":
                 match which_check:
                     case "space":
-                        check_space(server, error_flag)
+                        check_space(server, warning, critical, error_flag)
+                        ic("Space Error Flag:", error_flag)
                     case "blocks":
                         check_blocks(server, error_flag)
+                        ic("Blocks Error Flag:", error_flag)
                     case "replication":
                         check_replication(server, error_flag)
+                        ic("Replication Error Flag:", error_flag)
                     case "namenodes":
                         check_namenodes(server, error_flag)
+                        ic("Namenodes Error Flag:", error_flag)
                     # You should never get here.
                     case _:
                         ic("No Check Selected")
@@ -609,6 +655,7 @@ def main(warning=None, critical=None):
                 match which_check:
                     case "datanodes":
                         check_datanodes(server, error_flag)
+                        ic("Datanodes Error Flag:", error_flag)
                     # You should never get here.
                     case _:
                         ic("No Check Selected")
@@ -619,6 +666,7 @@ def main(warning=None, critical=None):
                 match which_check:
                     case "journalnodes":
                         check_journalnodes(server, error_flag)
+                        ic("Journalnodes Error Flag:", error_flag)
                     # You should never get here.
                     case _:
                         ic("No Check Selected")
@@ -647,10 +695,11 @@ def main(warning=None, critical=None):
 
 if __name__ == '__main__':
     main()
-    if error_flag == 1:
+    ic("Post Main Error Flag:", error_flag)
+    if error_flag >= 1:
         ic("## OPPS! ##")
         ic("Exception Error ->")
-        sys.exit(1)
+        sys.exit(error_flag)
     else:
         ic("* Complete! *")
         ic("All OK")
